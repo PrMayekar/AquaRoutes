@@ -1,0 +1,384 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ship Routing System</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #ecf0f3;
+        }
+        .navbar {
+            background-color: #1e3d59;
+            color: white;
+            padding: 12px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .navbar h3 {
+            margin: 0;
+            font-size: 1.8em;
+        }
+        .navbar-right {
+            display: flex;
+            align-items: center;
+        }
+        .navbar-right span {
+            font-size: 1.1em;
+            margin-right: 20px;
+        }
+        .logout-btn {
+            background-color: #ff4b5c;
+            border: none;
+            color: white;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s;
+        }
+        .logout-btn:hover {
+            background-color: #e63946;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #1e3d59;
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+        }
+        .controls {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #dfe6e9;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .controls button {
+            padding: 10px 20px;
+            background-color: #3498db;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .controls button:hover {
+            background-color: #2980b9;
+        }
+        .info-panel {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #dfe6e9;
+            margin-bottom: 20px;
+        }
+        .grid-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .grid-stats div {
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+        .status {
+            margin-top: 15px;
+            font-weight: bold;
+            color: #34495e;
+        }
+        .path-info {
+            margin-top: 10px;
+            font-size: 1.1em;
+        }
+        .map-container {
+            position: relative;
+            margin-top: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #1e3d59;
+        }
+        #map-image {
+            width: 100%;
+            display: block;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        /* Responsive tweaks */
+        @media(max-width: 768px) {
+            .controls, .info-panel {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .controls button {
+                margin-top: 10px;
+            }
+            .grid-stats {
+                flex-direction: column;
+            }
+        }
+    </style>
+    
+</head>
+<body>
+    <div class="navbar">
+        <div>
+            <h3>Maritime Ship Routing System</h3>
+        </div>
+        <div class="navbar-right">
+            <span>Welcome, {{ request.user.username }}</span>
+            <form method="post" action="{% url 'logout' %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="logout-btn">Logout</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="container">
+        <h1>Maritime Ship Routing System</h1>
+        
+        <div class="controls">
+            <div style="flex: 1;">
+                <button id="reset-btn">Reset Selection</button>
+            </div>
+            <small id="instruction" style="color: #7f8c8d; margin-top: 10px;">Click on a water cell to select start point</small>
+        </div>
+        
+        
+        <div class="info-panel">
+            <div class="grid-stats">
+                <div>Cell Size: <span id="cell-size">{{ cell_size }}</span>px</div>
+                <div>Water Cells: <span id="water-cell-count">Loading...</span></div>
+            </div>
+            <div class="path-info" style="display: none;">
+                <div>Path Length: <span id="path-length">0</span> cells</div>
+                <div>Total Cost: <span id="path-cost">0</span></div>
+            </div>
+            <div class="status" id="status"></div>
+        </div>
+        
+        <div class="map-container" style="width: {{ map_width }}px; height: {{ map_height }}px;">
+            <img src="{% static 'maps/mapimage2.jpg' %}" id="map-image">
+            <canvas id="grid-canvas" width="{{ map_width }}" height="{{ map_height }}"></canvas>
+            <canvas id="path-canvas" width="{{ map_width }}" height="{{ map_height }}"></canvas>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const mapImg = document.getElementById('map-image');
+            const gridCanvas = document.getElementById('grid-canvas');
+            const pathCanvas = document.getElementById('path-canvas');
+            const resetBtn = document.getElementById('reset-btn');
+            const instructionEl = document.getElementById('instruction');
+            const statusEl = document.getElementById('status');
+            const waterCellCountEl = document.getElementById('water-cell-count');
+            const pathLengthEl = document.getElementById('path-length');
+            const pathCostEl = document.getElementById('path-cost');
+            const pathInfoEl = document.querySelector('.path-info');
+            
+            const gridCtx = gridCanvas.getContext('2d');
+            const pathCtx = pathCanvas.getContext('2d');
+            
+            // Configuration
+            const cellSize = {{ cell_size }};
+            let gridData = {};
+            let waterCells = [];
+            
+            // Selection state
+            let startPoint = null;
+            let endPoint = null;
+            let currentPath = [];
+            
+            // Initialize
+            loadGridData();
+            
+            // Event handlers
+            pathCanvas.addEventListener('click', handleCanvasClick);
+            resetBtn.addEventListener('click', resetSelection);
+            
+            function loadGridData() {
+                statusEl.textContent = "Loading grid data...";
+                
+                // Note the updated URL path with /routing/ prefix
+                fetch('/routing/api/grid-data/')
+                    .then(response => response.json())
+                    .then(data => {
+                        waterCells = data.cells;
+                        waterCellCountEl.textContent = waterCells.length;
+                        
+                        // Create lookup object for faster access
+                        gridData = {};
+                        waterCells.forEach(cell => {
+                            gridData[`${cell.row},${cell.col}`] = cell.topsis_score;
+                        });
+                        
+                        drawGrid();
+                        statusEl.textContent = "Grid loaded. Select a starting point.";
+                    })
+                    .catch(error => {
+                        statusEl.textContent = "Error loading grid data: " + error;
+                    });
+            }
+            
+            function drawGrid() {
+                gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+                
+                // Draw all water cells
+                gridCtx.strokeStyle = 'rgba(0, 100, 255, 0.3)';
+                gridCtx.lineWidth = 0.5;
+                
+                waterCells.forEach(cell => {
+                    const x = cell.col * cellSize;
+                    const y = cell.row * cellSize;
+                    
+                    // Color based on TOPSIS score (lower is better)
+                    const score = cell.topsis_score;
+                    const intensity = Math.min(255, Math.floor((score / 10) * 255));
+                    gridCtx.fillStyle = `rgba(0, 100, 255, 0.1)`;
+                    
+                    // Draw cell
+                    gridCtx.fillRect(x, y, cellSize, cellSize);
+                    gridCtx.strokeRect(x, y, cellSize, cellSize);
+                });
+            }
+            
+            function handleCanvasClick(event) {
+                const rect = pathCanvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                // Convert to grid coordinates
+                const col = Math.floor(x / cellSize);
+                const row = Math.floor(y / cellSize);
+                
+                // Check if it's a water cell
+                if (!gridData[`${row},${col}`]) {
+                    statusEl.textContent = "Please click on a water cell";
+                    return;
+                }
+                
+                if (!startPoint) {
+                    // Set start point
+                    startPoint = { row, col };
+                    drawPoint(row, col, 'yellow');
+                    instructionEl.textContent = "Now select destination point";
+                    statusEl.textContent = `Start point set at (${row}, ${col})`;
+                } else if (!endPoint) {
+                    // Set end point
+                    endPoint = { row, col };
+                    drawPoint(row, col, 'blue');
+                    statusEl.textContent = `End point set at (${row}, ${col}). Calculating route...`;
+                    
+                    // Calculate route
+                    calculateRoute(startPoint, endPoint);
+                }
+            }
+            
+            function drawPoint(row, col, color) {
+                pathCtx.fillStyle = color;
+                pathCtx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+                pathCtx.strokeStyle = 'black';
+                pathCtx.strokeRect(col * cellSize, row * cellSize, cellSize, cellSize);
+            }
+            
+            function calculateRoute(start, end) {
+                // Note the updated URL path with /routing/ prefix
+                fetch('/routing/api/calculate-route/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        start_row: start.row,
+                        start_col: start.col,
+                        end_row: end.row,
+                        end_col: end.col
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        statusEl.textContent = "Error: " + data.error;
+                        return;
+                    }
+                    
+                    currentPath = data.path;
+                    
+                    if (currentPath.length > 0) {
+                        drawPath(currentPath);
+                        pathInfoEl.style.display = 'block';
+                        pathLengthEl.textContent = currentPath.length;
+                        pathCostEl.textContent = data.total_cost.toFixed(2);
+                        statusEl.textContent = `Route calculated! Path length: ${currentPath.length} cells`;
+                    } else {
+                        statusEl.textContent = "No path found between the selected points";
+                    }
+                })
+                .catch(error => {
+                    statusEl.textContent = "Error calculating route: " + error;
+                });
+            }
+            
+            function drawPath(path) {
+                // Draw path cells
+                path.forEach((point, index) => {
+                    if (index > 0 && index < path.length - 1) {  // Skip start and end points
+                        pathCtx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+                        pathCtx.fillRect(point.col * cellSize, point.row * cellSize, cellSize, cellSize);
+                        pathCtx.strokeStyle = 'black';
+                        pathCtx.strokeRect(point.col * cellSize, point.row * cellSize, cellSize, cellSize);
+                    }
+                });
+                
+                // Draw path lines
+                pathCtx.beginPath();
+                pathCtx.moveTo(
+                    path[0].col * cellSize + cellSize/2, 
+                    path[0].row * cellSize + cellSize/2
+                );
+                
+                path.forEach(point => {
+                    pathCtx.lineTo(
+                        point.col * cellSize + cellSize/2,
+                        point.row * cellSize + cellSize/2
+                    );
+                });
+                
+                pathCtx.strokeStyle = 'green';
+                pathCtx.lineWidth = 2;
+                pathCtx.stroke();
+            }
+            
+            function resetSelection() {
+                startPoint = null;
+                endPoint = null;
+                currentPath = [];
+                pathCtx.clearRect(0, 0, pathCanvas.width, pathCanvas.height);
+                instructionEl.textContent = "Click on a water cell to select start point";
+                statusEl.textContent = "Selection reset";
+                pathInfoEl.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
