@@ -1,4 +1,4 @@
-#  🚢
+#  Visualization Of Dijkstra Algorithm
 
 An intelligent maritime route optimization system that uses advanced algorithms and real-time weather data to determine safe and efficient shipping routes. Built with Django, GeoPandas, and a modified Dijkstra's algorithm enhanced with TOPSIS scoring.
 
@@ -21,7 +21,7 @@ An intelligent maritime route optimization system that uses advanced algorithms 
 |----------|--------------|
 | **Backend** | Django, Python |
 | **Database** | MySQL |
-| **Frontend** | HTML5, CSS3, JavaScript |
+| **Frontend** | HTML5, CSS3 |
 | **Libraries** | GeoPandas, NetworkX, NumPy |
 
 ---
